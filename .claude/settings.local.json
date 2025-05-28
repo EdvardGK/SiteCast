@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(code .)",
+      "Bash(cursor:*)",
+      "Bash(wget:*)",
+      "Bash(cat:*)"
+    ],
+    "deny": []
+  }
+}
