@@ -1,88 +1,125 @@
 """Coordinate verification utilities"""
 
-import ifcopenshell
-import os
+import pandas as pd
+from typing import Dict, List, Any, Optional, Tuple
+
+try:
+    import ifcopenshell
+    USE_IFCOPENSHELL = True
+except ImportError:
+    USE_IFCOPENSHELL = False
 
 
-def verify_ifc_coordinates(ifc_file_path, original_data, offsets):
-    """Verify that IFC coordinates match original data"""
+def verify_ifc_coordinates(
+    ifc_path: str, original_df: pd.DataFrame, offsets: Dict[str, float]
+) -> List[Dict[str, Any]]:
+    """Verify that IFC coordinates match expected values"""
+    if not USE_IFCOPENSHELL:
+        return verify_ifc_coordinates_simple(ifc_path, original_df, offsets)
+        
     try:
-        # Read the IFC file back
-        ifc_file = ifcopenshell.open(ifc_file_path)
+        # Original ifcopenshell implementation
+        ifc_file = ifcopenshell.open(ifc_path)
+        results = []
 
-        # Find all survey points
-        survey_points = ifc_file.by_type("IfcBuildingElementProxy")
+        # Get all annotations (survey points)
+        annotations = ifc_file.by_type("IfcAnnotation")
 
-        verification_results = []
+        for idx, row in original_df.iterrows():
+            point_id = str(row.get("ID", f"Unknown_{idx}"))
+            expected_n = float(row["N"]) - offsets["N"]
+            expected_e = float(row["E"]) - offsets["E"]
+            expected_z = float(row["Z"]) - offsets["Z"]
 
-        for point in survey_points:
-            if "Survey Point" in (point.Name or ""):
-                # Get local coordinates from placement
-                placement = point.ObjectPlacement
-                if placement and placement.RelativePlacement:
-                    location = placement.RelativePlacement.Location
-                    if location and hasattr(location, "Coordinates"):
-                        local_x, local_y, local_z = location.Coordinates
+            # Find matching annotation
+            found = False
+            for annotation in annotations:
+                if point_id in str(annotation.Name):
+                    # Get placement
+                    if annotation.ObjectPlacement:
+                        placement = annotation.ObjectPlacement
+                        if placement.RelativePlacement:
+                            location = placement.RelativePlacement.Location
+                            if location:
+                                coords = location.Coordinates
+                                if coords and len(coords) == 3:
+                                    ifc_e, ifc_n, ifc_z = coords
+                                    
+                                    # Check if coordinates match (within tolerance)
+                                    tolerance = 0.001  # 1mm
+                                    n_match = abs(ifc_n - expected_n) < tolerance
+                                    e_match = abs(ifc_e - expected_e) < tolerance
+                                    z_match = abs(ifc_z - expected_z) < tolerance
+                                    
+                                    results.append({
+                                        "point_id": point_id,
+                                        "expected": {"N": expected_n, "E": expected_e, "Z": expected_z},
+                                        "found": {"N": ifc_n, "E": ifc_e, "Z": ifc_z},
+                                        "matches": {"N": n_match, "E": e_match, "Z": z_match},
+                                        "all_match": n_match and e_match and z_match,
+                                    })
+                                    found = True
+                                    break
 
-                        # Convert back to N,E,Z
-                        local_e = local_x
-                        local_n = local_y
-                        local_z_val = local_z
+            if not found:
+                results.append({
+                    "point_id": point_id,
+                    "expected": {"N": expected_n, "E": expected_e, "Z": expected_z},
+                    "found": None,
+                    "matches": {"N": False, "E": False, "Z": False},
+                    "all_match": False,
+                })
 
-                        # Calculate original coordinates
-                        calc_n = local_n + offsets["N"]
-                        calc_e = local_e + offsets["E"]
-                        calc_z = local_z_val + offsets["Z"]
-
-                        # Find corresponding original point
-                        point_id = (
-                            point.Name.replace("Survey Point ", "")
-                            if point.Name
-                            else "Unknown"
-                        )
-
-                        # Find matching point in original data
-                        matching_point = None
-                        for _, row in original_data.iterrows():
-                            if str(row.get("ID", "")) == point_id:
-                                matching_point = row
-                                break
-
-                        if matching_point is not None:
-                            orig_n = float(matching_point["N"])
-                            orig_e = float(matching_point["E"])
-                            orig_z = float(matching_point["Z"])
-
-                            # Check if coordinates match
-                            tolerance = 0.001  # 1mm tolerance
-                            n_match = abs(calc_n - orig_n) < tolerance
-                            e_match = abs(calc_e - orig_e) < tolerance
-                            z_match = abs(calc_z - orig_z) < tolerance
-
-                            verification_results.append(
-                                {
-                                    "point_id": point_id,
-                                    "original": {"N": orig_n, "E": orig_e, "Z": orig_z},
-                                    "calculated": {
-                                        "N": calc_n,
-                                        "E": calc_e,
-                                        "Z": calc_z,
-                                    },
-                                    "local": {
-                                        "N": local_n,
-                                        "E": local_e,
-                                        "Z": local_z_val,
-                                    },
-                                    "matches": {
-                                        "N": n_match,
-                                        "E": e_match,
-                                        "Z": z_match,
-                                    },
-                                    "all_match": n_match and e_match and z_match,
-                                }
-                            )
-
-        return verification_results
+        return results
 
     except Exception as e:
-        return f"Verification failed: {str(e)}"
+        return f"Error during verification: {str(e)}"
+
+
+def verify_ifc_coordinates_simple(
+    ifc_path: str, original_df: pd.DataFrame, offsets: Dict[str, float]
+) -> List[Dict[str, Any]]:
+    """Simple verification by parsing IFC text file"""
+    try:
+        results = []
+        
+        # Read IFC file as text
+        with open(ifc_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # For each point in original data
+        for idx, row in original_df.iterrows():
+            point_id = str(row.get("ID", f"Unknown_{idx}"))
+            expected_n = float(row["N"]) - offsets["N"]
+            expected_e = float(row["E"]) - offsets["E"]
+            expected_z = float(row["Z"]) - offsets["Z"]
+            
+            # Simple check - look for the point ID and nearby coordinates
+            found = False
+            if f"Survey Point {point_id}" in content:
+                # Try to find coordinates near this point mention
+                # This is a simplified check
+                coord_str = f"{expected_e:.3f},{expected_n:.3f},{expected_z:.3f}"
+                if coord_str in content:
+                    found = True
+                    results.append({
+                        "point_id": point_id,
+                        "expected": {"N": expected_n, "E": expected_e, "Z": expected_z},
+                        "found": {"N": expected_n, "E": expected_e, "Z": expected_z},
+                        "matches": {"N": True, "E": True, "Z": True},
+                        "all_match": True,
+                    })
+            
+            if not found:
+                results.append({
+                    "point_id": point_id,
+                    "expected": {"N": expected_n, "E": expected_e, "Z": expected_z},
+                    "found": None,
+                    "matches": {"N": False, "E": False, "Z": False},
+                    "all_match": False,
+                })
+        
+        return results
+        
+    except Exception as e:
+        return f"Error during verification: {str(e)}"

@@ -5,7 +5,8 @@
       "Bash(code .)",
       "Bash(cursor:*)",
       "Bash(wget:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(git add:*)"
     ],
     "deny": []
   }

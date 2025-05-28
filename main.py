@@ -11,7 +11,11 @@ from sitecast.utils.session import initialize_session_state
 from sitecast.ui.sidebar import create_sidebar
 from sitecast.ui.upload import create_upload_section
 from sitecast.ui.mapping import create_mapping_section
-from sitecast.ui.export import create_export_section
+try:
+    from sitecast.ui.export import create_export_section
+except ImportError:
+    # Fallback to simple export if ifcopenshell is not available
+    from sitecast.ui.export_simple import create_export_section
 
 
 def main():
