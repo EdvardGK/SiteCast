@@ -10,7 +10,7 @@ ENV/
 *.egg-info/
 
 # Streamlit
-.streamlit/
+.streamlit/secrets.toml
 
 # IDE
 .vscode/
