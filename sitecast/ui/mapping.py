@@ -55,6 +55,11 @@ def handle_standard_mapping(df, file_extension):
 
     st.subheader("🗺️ Column Mapping")
     st.caption("Map your file columns to N,E,Z coordinate data")
+    
+    # Debug: Show detected columns
+    with st.expander("🔍 Auto-detected columns (debug)"):
+        st.write("Available columns:", list(df.columns))
+        st.write("Detected mapping:", detected_mapping)
 
     available_columns = [""] + list(df.columns)
     col_map = {}
@@ -113,6 +118,17 @@ def handle_standard_mapping(df, file_extension):
         st.error(
             f"Please map the following required columns: {', '.join(missing_mappings)}"
         )
+        st.info("💡 **Tip**: Your file has these columns: " + ", ".join([f"`{col}`" for col in df.columns if col]))
+        
+        # Check if auto-detection found something
+        detected_but_not_selected = []
+        for col in missing_mappings:
+            if detected_mapping.get(col):
+                detected_but_not_selected.append(f"{col} → {detected_mapping[col]}")
+        
+        if detected_but_not_selected:
+            st.warning("🔍 **Auto-detection found these mappings but they weren't selected**: " + ", ".join(detected_but_not_selected))
+        
         return missing_mappings
     else:
         # Apply mapping

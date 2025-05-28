@@ -120,7 +120,20 @@ def detect_coordinate_columns(df):
     # Find best matches for each coordinate type
     for coord_type, patterns in COORDINATE_PATTERNS.items():
         for pattern in patterns:
+            # Check for exact matches first
             matches = [col for col in df.columns if col.upper() == pattern]
+            if matches:
+                mapping[coord_type.upper()] = matches[0]
+                break
+            
+            # Check if pattern is contained in column name (with word boundaries)
+            matches = [col for col in df.columns if pattern in col.upper().replace('_', ' ').split()]
+            if matches:
+                mapping[coord_type.upper()] = matches[0]
+                break
+            
+            # Check if column contains the pattern as substring
+            matches = [col for col in df.columns if pattern in col.upper()]
             if matches:
                 mapping[coord_type.upper()] = matches[0]
                 break
